@@ -177,14 +177,14 @@ class EpiSEIRCNNRNNRes_PINN(nn.Module):
 
         # === RETURN EXACTLY 8 VALUES FOR train() COMPATIBILITY ===
         return (
-            final_pred,      # output (main prediction)
-            dl_pred,         # EpiOutput (pure DL)
-            self.physics.beta,  # beta (transmission rates)
-            self.physics.sigma, # sigma (incubation rates)
-            self.physics.gamma, # gamma (recovery rates)
-            Pi,              # K (learned mobility matrix)
-            E_sim,           # E_sim (latent exposed)
-            I_sim            # I_sim (physics infected)
+            final_pred,           # 0: main fused prediction (B, h, N)
+            dl_pred,              # 1: pure data-driven prediction (for epi loss)
+            self.physics.beta,    # 2: learned transmission rate β  (N,)
+            self.physics.sigma,   # 3: learned incubation rate σ  (N,)
+            self.physics.gamma,   # 4: learned recovery rate γ    (N,)
+            Pi,                   # 5: learned mobility matrix K  (N, N)
+            E_sim,                # 6: simulated latent Exposed   (B, h, N)
+            I_sim                 # 7: simulated Infected         (B, h, N)
         )
 
 
