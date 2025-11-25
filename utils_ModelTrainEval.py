@@ -7,36 +7,42 @@ import numpy as np
 def evaluate(loader, data, model, evaluateL2, evaluateL1, batch_size, modelName,
              lambda_pde=None, lambda_ngm=None):
     model.eval()
-    total_loss = total_loss_l1 = 0
+    total_loss = total_loss_l1 = 0.0
     n_samples = 0
     all_pred = []
     all_true = []
     
     for X, Y in loader.get_batches(data, batch_size, False):
         if modelName == "EpiSEIRCNNRNNRes_PINN":
-            output, _, _, _, _, _, _, _ = model(X)
+            output, _, _, _, _, _, _, _ = model(X)  # we only need final_pred
         else:
             output = model(X)
-            
-        scale = loader.scale.expand(output.shape[0], loader.m).to(output.device)
+        
+        B, H, N = output.shape  # (batch, horizon, regions)
+        
+        # FINAL CORRECT SCALE BROADCAST — THIS FIXES EVERYTHING
+        scale = loader.scale.to(output.device)              # (9,)
+        scale = scale.view(1, 1, N).expand(B, H, N)          # → (B, H, 9)
+        
         scaled_pred = output * scale
         scaled_true = Y * scale
         
         total_loss += evaluateL2(scaled_pred, scaled_true).item()
         total_loss_l1 += evaluateL1(scaled_pred, scaled_true).item()
-        n_samples += output.size(0) * loader.m
+        n_samples += B * H * N
         
         all_pred.append(scaled_pred.detach().cpu().numpy())
         all_true.append(scaled_true.detach().cpu().numpy())
     
+    # Metrics
     all_pred = np.concatenate(all_pred, axis=0)
     all_true = np.concatenate(all_true, axis=0)
     
-    rse = math.sqrt(total_loss / n_samples) / (loader.rse_denominator.mean().item() + 1e-8)
-    rae = total_loss_l1 / n_samples / (np.abs(all_true).mean() + 1e-8)
+    rse = math.sqrt(total_loss / n_samples)
+    rae = total_loss_l1 / n_samples
     
     # Correlation
-    corr = np.mean([np.corrcoef(all_pred.ravel(), all_true.ravel())[0,1]] )
+    corr = np.corrcoef(all_pred.ravel(), all_true.ravel())[0, 1]
     
     # R²
     ss_res = np.sum((all_true - all_pred) ** 2)
