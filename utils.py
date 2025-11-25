@@ -27,7 +27,7 @@ class Data_utility(object):
         # === ADJACENCY MATRIX LOADING ===
         if args.model == "EpiSEIRCNNRNNRes_PINN":
             # Use binary adjacency from GenerateAdjacentMatrix.py
-            adj_file = './ind_mat2.txt'
+            adj_file = 'data/us_hhs/ind_mat2.txt'
             if not os.path.exists(adj_file):
                 raise FileNotFoundError(f"Adjacency matrix not found: {adj_file}")
             self.adj = np.loadtxt(adj_file, delimiter=',')
