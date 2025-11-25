@@ -95,7 +95,7 @@ print(f"Data loaded: {Data.m} locations, {Data.T} weeks")
 # ========================================
 # Model
 # ========================================
-model = EpiSEIRCNNRNNRes_PINN(args, Data)
+model = EpiSEIRCNNRNNRes_PINN(args, Data, args.horizon)
 if args.cuda:
     model.cuda()
 
