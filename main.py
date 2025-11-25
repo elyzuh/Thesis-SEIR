@@ -20,17 +20,17 @@ from models.EpiSEIRCNNRNNRes_PINN import EpiSEIRCNNRNNRes_PINN
 # ========================================
 # Argument Parser
 # ========================================
-parser = argparse.ArgumentParser(description='Thesis: SEIR-PINN-NGM Disease Forecasting')
-parser.add_argument('--data', type=str, required=True)
+parser = argparse.ArgumentParser(description='Thesis: SEIR-PINN-NGM Forecasting')
+parser.add_argument('--data', type=str, required=True, help='Path to data file')
 parser.add_argument('--train', type=float, default=0.6)
 parser.add_argument('--valid', type=float, default=0.2)
-parser.add_argument('--model', type=str, default='EpiSEIRCNNRes_PINN')
+parser.add_argument('--model', type=str, default='EpiSEIRCNNRNNRes_PINN')
 
 parser.add_argument('--hidRNN', type=int, default=50)
 parser.add_argument('--dropout', type=float, default=0.2)
 parser.add_argument('--save_dir', type=str, default='./save')
-parser.add_argument('--save_name', type=str, default='my_thesis_seir_pinn')
-parser.add_argument('--epochs', type=int, default=80)
+parser.add_argument('--save_name', type=str, default='thesis_final_v1')
+parser.add_argument('--epochs', type=int, default=100)
 parser.add_argument('--batch_size', type=int, default=32)
 parser.add_argument('--lr', type=float, default=0.001)
 parser.add_argument('--clip', type=float, default=1.0)
@@ -46,6 +46,9 @@ parser.add_argument('--gpu', type=int, default=0, help='GPU ID (-1 = CPU)')
 parser.add_argument('--epilambda', type=float, default=0.3)
 parser.add_argument('--lambda_pde', type=float, default=1.0)
 parser.add_argument('--lambda_ngm', type=float, default=0.5)
+
+# FIX 1: Add missing sim_mat with default None
+parser.add_argument('--sim_mat', type=str, default=None, help='Legacy argument')
 
 args = parser.parse_args()
 print(args)
@@ -71,26 +74,29 @@ os.makedirs("./Figures", exist_ok=True)
 # ========================================
 # Load Data
 # ========================================
-Data = Data_utility(args)
+Data = Data_utility(args)  # Now works — sim_mat exists!
 print(f"Data loaded: {Data.m} regions × {Data.T} weeks")
 
 
 # ========================================
-# Model + GPU-Safe Forward Wrapper
+# Model + Safe Forward Wrapper
 # ========================================
 print("Initializing EpiSEIRCNNRNNRes_PINN...")
 model = EpiSEIRCNNRNNRes_PINN(args, Data, args.horizon)
-model = model.to(device)  # ← CORRECT WAY
+model = model.to(device)  # Correct way
 
 nParams = sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(f"→ Model ready on {device} | Parameters: {nParams:,}")
+print(f"Model ready on {device} | Trainable parameters: {nParams:,}")
 
-# Save original forward, wrap safely
+# Save original forward
 _original_forward = model.forward
+
+# Safe forward: moves input to correct device
 def safe_forward(x):
-    x = x.to(device)  # ← ENSURES INPUT IS ON CORRECT DEVICE
+    x = x.to(device)
     final_pred, dl_pred, physics_pred, Pi = _original_forward(x)
     return final_pred, physics_pred
+
 model.forward = safe_forward
 
 
@@ -98,6 +104,7 @@ model.forward = safe_forward
 # Loss & Optimizer
 # ========================================
 criterion = nn.MSELoss(reduction='sum').to(device)
+l1_criterion = nn.L1Loss(reduction='sum').to(device)
 
 optim = Optim.Optim(
     params=model.parameters(),
@@ -105,7 +112,7 @@ optim = Optim.Optim(
     lr=args.lr,
     max_grad_norm=args.clip,
     weight_decay=args.weight_decay,
-    named_params=dict(model.named_parameters())  # ← FIXED
+    named_params=dict(model.named_parameters())
 )
 
 
@@ -116,9 +123,9 @@ best_val = float('inf')
 train_losses = []
 val_losses = []
 
-print("\n" + "="*70)
-print("STARTING TRAINING — SEIR-PINN-NGM")
-print("="*70)
+print("\n" + "="*75)
+print("STARTING TRAINING — SEIR-PINN WITH LEARNED MOBILITY & PHYSICS")
+print("="*75)
 
 for epoch in range(1, args.epochs + 1):
     epoch_start = time.time()
@@ -129,7 +136,7 @@ for epoch in range(1, args.epochs + 1):
     )
 
     val_rse, val_rae, val_corr = evaluate(
-        Data, Data.valid, model, criterion, nn.L1Loss(reduction='sum').to(device),
+        Data, Data.valid, model, criterion, l1_criterion,
         args.batch_size, args.model, args.lambda_pde, args.lambda_ngm
     )
 
@@ -147,47 +154,50 @@ for epoch in range(1, args.epochs + 1):
 
 
 # ========================================
-# Final Evaluation & Plots
+# Final Test & Plots
 # ========================================
-print("\nLoading best model...")
-model.load_state_dict(torch.load(f"{args.save_dir}/{args.save_name}.pt"))
+print("\nLoading best model for final evaluation...")
+model.load_state_dict(torch.load(f"{args.save_dir}/{args.save_name}.pt", map_location=device))
 model.eval()
 
 test_rse, test_rae, test_corr = evaluate(
-    Data, Data.test, model, criterion, nn.L1Loss(reduction='sum').to(device),
+    Data, Data.test, model, criterion, l1_criterion,
     args.batch_size, args.model, args.lambda_pde, args.lambda_ngm
 )
-print(f"\nFINAL TEST → RSE: {test_rse:.4f} | RAE: {test_rae:.4f} | Corr: {test_corr:.4f}")
+print(f"\nFINAL TEST RESULTS")
+print(f"→ RSE: {test_rse:.4f} | RAE: {test_rae:.4f} | Correlation: {test_corr:.4f}")
 
-# Predictions
-outputs = GetPrediction(Data, Data.test, model, criterion, nn.L1Loss(reduction='sum').to(device), args.batch_size, args.model)
+# Get predictions
+outputs = GetPrediction(Data, Data.test, model, criterion, l1_criterion, args.batch_size, args.model)
 X_true, Y_pred, Y_true, BetaList, SigmaList, GammaList, NGMList, EList = outputs
 
 save_dir = f"./Figures/{args.save_name}_final/"
 os.makedirs(save_dir, exist_ok=True)
+print(f"Saving plots to: {save_dir}")
 
 PlotTrends(X_true.transpose(2, 0, 1), Y_true.T, Y_pred.T, save_dir, args.horizon)
 PlotPredictionTrends(Y_true.T, Y_pred.T, save_dir)
 PlotLatentE(EList, save_dir)
 PlotParameters(BetaList.T, SigmaList.T, GammaList.T, save_dir)
 
-# Mobility matrix
+# Learned mobility
 with torch.no_grad():
     dummy = torch.zeros(1, args.window, Data.m, device=device)
     _, _, _, Pi = _original_forward(dummy)
     mobility = torch.softmax(Pi, dim=1).cpu().numpy()
-PlotEachMatrix(mobility[None, ...], "Learned Mobility", "Mobility", save_dir)
+PlotEachMatrix(mobility[None, ...], "Learned Mobility Matrix", "Mobility", save_dir)
 
 # Training curve
 plt.figure(figsize=(10, 6))
 plt.plot(train_losses, label="Train Loss", color="brown")
-plt.plot(val_losses, label="Val RSE", color="navy")
-plt.xlabel("Epoch"); plt.ylabel("Loss/RSE")
-plt.title("SEIR-PINN Training")
+plt.plot(val_losses, label="Validation RSE", color="navy")
+plt.xlabel("Epoch"); plt.ylabel("Loss / RSE")
+plt.title("SEIR-PINN Training Curve")
 plt.legend(); plt.grid(True, alpha=0.3)
 plt.savefig(f"{save_dir}training_curve.pdf", bbox_inches='tight')
 plt.show()
 
-print(f"\nSUCCESS! Model: {args.save_dir}/{args.save_name}.pt")
-print(f"Plots: {save_dir}")
-print("Your thesis is now complete. Congratulations, Doctor!")
+print(f"\nSUCCESS! Your thesis model is complete.")
+print(f"Model saved: {args.save_dir}/{args.save_name}.pt")
+print(f"Figures: {save_dir}")
+print("Go write that Results chapter — you have a publishable model now!")
