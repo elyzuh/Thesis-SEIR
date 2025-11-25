@@ -88,18 +88,6 @@ model = model.to(device)  # Correct way
 nParams = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Model ready on {device} | Trainable parameters: {nParams:,}")
 
-# Save original forward
-_original_forward = model.forward
-
-# Safe forward: moves input to correct device
-def safe_forward(x):
-    x = x.to(device)
-    final_pred, dl_pred, physics_pred, Pi = _original_forward(x)
-    return final_pred, physics_pred
-
-model.forward = safe_forward
-
-
 # ========================================
 # Loss & Optimizer
 # ========================================
