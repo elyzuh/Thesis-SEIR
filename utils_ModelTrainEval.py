@@ -71,14 +71,19 @@ def train(loader, data, model, criterion, optim, batch_size, modelName,
 
     for inputs in loader.get_batches(data, batch_size, True):
         X, Y = inputs[0], inputs[1]
-        optim.zero_grad()
+
+        # === ZERO GRADIENTS MANUALLY (since Optim has no zero_grad) ===
+        for p in model.parameters():
+            if p.grad is not None:
+                p.grad.detach_()
+                p.grad.zero_()
 
         if modelName == "EpiSEIRCNNRNNRes_PINN":
             output, EpiOutput, beta, sigma, gamma, K, E_sim, I_sim = model(X)
             loss = pinn_seir_loss(
                 output, EpiOutput, Y, E_sim, I_sim,
                 beta, sigma, gamma, K,
-                X.shape[1], loader.m, X.device,  # window, num_regions, device
+                X.shape[1], loader.m, X.device,
                 Lambda, lambda_pde, lambda_ngm
             )
         else:
@@ -87,14 +92,12 @@ def train(loader, data, model, criterion, optim, batch_size, modelName,
             loss = criterion(output * scale, Y * scale)
 
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optim.step()
+        optim.step()  # ← This calls your Optim.step() with clipping!
 
         total_loss += loss.item() * X.size(0)
         n_samples += X.size(0)
 
     return total_loss / n_samples
-
 
 # ----------------------------------------------------------------------
 # 3. PINN-SEIR LOSS — FIXED (no model.P, no model.mask_mat)
