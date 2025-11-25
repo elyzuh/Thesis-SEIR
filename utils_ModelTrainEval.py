@@ -131,28 +131,43 @@ def pinn_seir_loss(final_pred, dl_pred, Y_true, E_sim, I_sim,
 
     return loss_data + Lambda * loss_epi + lambda_pde * loss_pde + lambda_ngm * loss_ngm
 
+# utils_ModelTrainEval.py → REPLACE ONLY THIS FUNCTION
 def GetPrediction(loader, data, model, evaluateL2, evaluateL1, batch_size, modelName):
     model.eval()
     preds, trues, inputs = [], [], []
     betas, sigmas, gammas, Pis, Es = [], [], [], [], []
-    
+
     for X, Y in loader.get_batches(data, batch_size, False):
         if modelName == "EpiSEIRCNNRNNRes_PINN":
-            out, _, beta, sigma, gamma, Pi, E_sim, _ = model(X)
+            final_pred, _, beta, sigma, gamma, Pi, E_sim, _ = model(X)
         else:
-            out = model(X)
-            
+            final_pred = model(X)
+
         scale = loader.scale.cpu().numpy()
-        preds.append((out.detach().cpu().numpy() * scale).squeeze(1))
-        trues.append((Y.detach().cpu().numpy() * scale))
+
+        # CORRECT: Do NOT squeeze dim=1 — keep (B, H, N)
+        pred_scaled = final_pred.detach().cpu().numpy() * scale  # (B, H, N)
+        true_scaled = Y.detach().cpu().numpy() * scale           # (B, H, N)
+
+        preds.append(pred_scaled)
+        trues.append(true_scaled)
         inputs.append((X.detach().cpu().numpy() * scale))
-        
+
         if modelName == "EpiSEIRCNNRNNRes_PINN":
             betas.append(beta.cpu().numpy())
             sigmas.append(sigma.cpu().numpy())
             gammas.append(gamma.cpu().numpy())
             Pis.append(Pi.cpu().numpy())
             Es.append(E_sim.cpu().numpy())
-    
-    return (np.concatenate(inputs), np.concatenate(preds), np.concatenate(trues),
-            np.array(betas), np.array(sigmas), np.array(gammas), np.array(Pis), np.array(Es))
+
+    # Concatenate properly
+    X_true = np.concatenate(inputs, axis=0)
+    Y_pred = np.concatenate(preds, axis=0)   # shape: (total_samples, horizon, regions)
+    Y_true = np.concatenate(trues, axis=0)
+
+    if modelName == "EpiSEIRCNNRNNRes_PINN":
+        return (X_true, Y_pred, Y_true,
+                np.array(betas), np.array(sigmas), np.array(gammas),
+                np.array(Pis), np.array(Es))
+    else:
+        return X_true, Y_pred, Y_true

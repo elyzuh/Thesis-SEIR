@@ -174,7 +174,12 @@ os.makedirs(save_dir, exist_ok=True)
 print(f"Saving all figures to: {save_dir}")
 
 # Time series plots
-PlotTrends(X_true.transpose(2, 0, 1), Y_true.T, Y_pred.T, save_dir, args.horizon)
+# X_true: (samples, window, regions)
+# Y_true/Y_pred: (samples, horizon, regions)
+PlotTrends(X_true.transpose(2, 0, 1), 
+           Y_true.transpose(2, 0, 1), 
+           Y_pred.transpose(2, 0, 1), 
+           save_dir, args.horizon)
 PlotPredictionTrends(Y_true.T, Y_pred.T, save_dir)
 PlotLatentE(EList, save_dir)
 PlotParameters(BetaList.T, SigmaList.T, GammaList.T, save_dir)
