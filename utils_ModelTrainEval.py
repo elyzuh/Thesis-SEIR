@@ -134,8 +134,13 @@ def pinn_seir_loss(final_pred, dl_pred, Y_true, E_sim, I_sim,
 # utils_ModelTrainEval.py → REPLACE THE ENTIRE FUNCTION WITH THIS
 def GetPrediction(loader, data, model, evaluateL2, evaluateL1, batch_size, modelName):
     model.eval()
-    preds, trues, inputs = [], [], []
-    betas, sigmas, gammas, Pis, Es = [], [], [], [], []
+    all_pred = []
+    all_true = []
+    all_input = []
+    
+    # For physics parameters — we collect only from the LAST batch (for visualization)
+    # This is standard practice — avoids shape issues and saves memory
+    beta_final = sigma_final = gamma_final = Pi_final = E_final = None
 
     for X, Y in loader.get_batches(data, batch_size, False):
         if modelName == "EpiSEIRCNNRNNRes_PINN":
@@ -144,31 +149,31 @@ def GetPrediction(loader, data, model, evaluateL2, evaluateL1, batch_size, model
             final_pred = model(X)
 
         scale = loader.scale.cpu().numpy()
+        
+        # Scale predictions and ground truth
+        pred_np = final_pred.detach().cpu().numpy() * scale
+        true_np = Y.detach().cpu().numpy() * scale
+        input_np = X.detach().cpu().numpy() * scale
 
-        # Keep full shape (B, H, N) — no squeeze!
-        pred_scaled = final_pred.detach().cpu().numpy() * scale
-        true_scaled = Y.detach().cpu().numpy() * scale
+        all_pred.append(pred_np)
+        all_true.append(true_np)
+        all_input.append(input_np)
 
-        preds.append(pred_scaled)
-        trues.append(true_scaled)
-        inputs.append(X.detach().cpu().numpy() * scale)
-
+        # Save parameters from the VERY LAST batch only (for plotting)
         if modelName == "EpiSEIRCNNRNNRes_PINN":
-            # FIXED: .detach() before .cpu().numpy()
-            betas.append(beta.detach().cpu().numpy())
-            sigmas.append(sigma.detach().cpu().numpy())
-            gammas.append(gamma.detach().cpu().numpy())
-            Pis.append(Pi.detach().cpu().numpy())
-            Es.append(E_sim.detach().cpu().numpy())
+            beta_final = beta.detach().cpu().numpy()
+            sigma_final = sigma.detach().cpu().numpy()
+            gamma_final = gamma.detach().cpu().numpy()
+            Pi_final = Pi.detach().cpu().numpy()
+            E_final = E_sim.detach().cpu().numpy()  # (B, H, N) — full trajectories
 
-    # Concatenate all batches
-    X_true = np.concatenate(inputs, axis=0)
-    Y_pred = np.concatenate(preds, axis=0)   # (total_samples, horizon, regions)
-    Y_true = np.concatenate(trues, axis=0)
+    # Concatenate all time series
+    X_true = np.concatenate(all_input, axis=0)   # (total_samples, window, regions)
+    Y_pred = np.concatenate(all_pred, axis=0)    # (total_samples, horizon, regions)
+    Y_true = np.concatenate(all_true, axis=0)
 
     if modelName == "EpiSEIRCNNRNNRes_PINN":
         return (X_true, Y_pred, Y_true,
-                np.array(betas), np.array(sigmas), np.array(gammas),
-                np.array(Pis), np.array(Es))
+                beta_final, sigma_final, gamma_final, Pi_final, E_final)
     else:
         return X_true, Y_pred, Y_true
