@@ -87,10 +87,10 @@ print(f"Data loaded: {Data.m} regions × {Data.T} weeks")
 
 
 # ========================================
-# Initialize Model
+# Model + Forward Wrapper (GPU-SAFE!)
 # ========================================
-print("Initializing EpiSEIRCNNRNNRes_PINN model...")
-model = EpiSEIRCNNRNNRes_PINN(args, Data, args.horizon)
+print("Initializing EpiSEIRCNNRNNRes_PINN...")
+model = EpiSEIRCNNRNNRes_PINN
 
 if args.cuda:
     model = model.cuda()
@@ -100,10 +100,13 @@ print(f"→ Model loaded | Trainable parameters: {nParams:,}")
 
 
 # === CRITICAL: Wrap forward() to match old train/evaluate interface ===
+# === FIXED: GPU-safe forward wrapper ===
 _original_forward = model.forward
 def wrapped_forward(x):
+    if args.cuda:
+        x = x.cuda()  # ← THIS LINE WAS MISSING! 
     final_pred, dl_pred, physics_pred, Pi = _original_forward(x)
-    return final_pred, physics_pred  # exactly what train() and evaluate() expect
+    return final_pred, physics_pred
 model.forward = wrapped_forward
 
 
