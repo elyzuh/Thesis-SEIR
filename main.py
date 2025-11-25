@@ -119,7 +119,8 @@ optim = Optim.Optim(
     method=args.optim,
     lr=args.lr,
     max_grad_norm=args.clip,
-    weight_decay=args.weight_decay
+    weight_decay=args.weight_decay,
+    named_params=dict(model.named_parameters())
 )
 
 
