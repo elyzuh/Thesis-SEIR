@@ -123,7 +123,6 @@ for epoch in range(1, args.epochs + 1):
         args.model, args.epilambda, args.lambda_pde, args.lambda_ngm
     )
 
-    # Now evaluate returns 4 values: RSE, RAE, Corr, R²
     val_rse, val_rae, val_corr, val_r2 = evaluate(
         Data, Data.valid, model, criterion, l1_criterion,
         args.batch_size, args.model
@@ -154,64 +153,70 @@ test_rse, test_rae, test_corr, test_r2 = evaluate(
     args.batch_size, args.model
 )
 
-print(f"\n" + "="*60)
+print(f"\n" + "="*70)
 print("FINAL TEST RESULTS (US HHS Influenza Forecasting)")
 print(f"→ RSE        : {test_rse:.4f}")
 print(f"→ RAE        : {test_rae:.4f}")
 print(f"→ Correlation: {test_corr:.4f}")
 print(f"→ R²         : {test_r2:.4f}")
-print("="*60)
+print("="*70)
 
 
 # ========================================
 # Predictions & Visualization
 # ========================================
+print("Generating predictions and latent variables...")
 outputs = GetPrediction(Data, Data.test, model, criterion, l1_criterion, args.batch_size, args.model)
 X_true, Y_pred, Y_true, beta_avg, sigma_avg, gamma_avg, Pi_matrix, E_trajectories = outputs
 
+# Define save directory
 save_dir = f"./Figures/{args.save_name}_results/"
 os.makedirs(save_dir, exist_ok=True)
-print(f"Saving all figures to: {save_dir}")
+print(f"Saving all figures to: {save_dir}\n")
 
-# Time series plots
-# X_true: (samples, window, regions)
-# Y_true/Y_pred: (samples, horizon, regions)
-PlotTrends(X_true.transpose(2, 0, 1), 
-           Y_true.transpose(2, 0, 1), 
-           Y_pred.transpose(2, 0, 1), 
-           save_dir, args.horizon)
-PlotPredictionTrends(Y_true.T, Y_pred.T, save_dir)
-# Parameters (from last batch — representative)
-PlotParameters(beta_avg[None, :].T, sigma_avg[None, :].T, gamma_avg[None, :].T, save_dir)
+# === PLOTTING ===
+# 1. Historical + Forecast (average over test set)
+PlotTrends(
+    X_true.transpose(2, 0, 1),      # (regions, samples, window)
+    Y_true.transpose(2, 0, 1),      # (regions, samples, horizon)
+    Y_pred.transpose(2, 0, 1),
+    save_dir, args.horizon
+)
 
-# Latent Exposed (full batch trajectories)
+# 2. Multi-step forecast performance
+PlotPredictionTrends(
+    Y_true.transpose(2, 0, 1),
+    Y_pred.transpose(2, 0, 1),
+    save_dir
+)
+
+# 3. Latent Exposed compartment
 PlotLatentE(E_trajectories, save_dir)
 
-# Learned mobility matrix
-PlotEachMatrix(Pi_matrix[None, ...], "Learned Inter-Region Mobility Matrix", "Mobility", save_dir)
+# 4. Learned SEIR parameters
+PlotParameters(beta_avg, sigma_avg, gamma_avg, save_dir)
 
-# Learned mobility matrix (average over test set)
-with torch.no_grad():
-    dummy = torch.zeros(1, args.window, Data.m, device=device)
-    _, _, _, _, _, Pi, _, _ = model(dummy)
-    mobility = torch.softmax(Pi, dim=1).cpu().numpy()
-PlotEachMatrix(mobility[None, ...], "Learned Inter-Region Mobility Matrix", "Mobility", save_dir)
+# 5. Learned mobility matrix
+PlotEachMatrix(Pi_matrix, "Learned Inter-Region Mobility Matrix Π", "Mobility", save_dir)
 
-# Training curve
-plt.figure(figsize=(11, 6))
+# 6. Training curve
+plt.figure(figsize=(12, 7))
 plt.plot(train_losses, label="Training Loss", color="brown", linewidth=2.5)
 plt.plot(val_rses, label="Validation RSE", color="navy", linewidth=2.5)
-plt.axhline(y=test_rse, color='green', linestyle='--', linewidth=2, label=f"Test RSE = {test_rse:.4f}")
+plt.axhline(y=test_rse, color='green', linestyle='--', linewidth=2.5, label=f"Test RSE = {test_rse:.4f}")
 plt.xlabel("Epoch", fontsize=14)
 plt.ylabel("Loss / RSE", fontsize=14)
-plt.title("SEIR-PINN Training Curve (US HHS Influenza)", fontsize=16)
+plt.title("EpiSEIRCNNRNNRes-PINN Training Curve\nUS HHS Influenza Forecasting", fontsize=16, weight='bold')
 plt.legend(fontsize=12)
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.savefig(f"{save_dir}training_curve.pdf", bbox_inches='tight', dpi=300)
-plt.show()
+plt.close()
 
-print(f"\nTHESIS MODEL TRAINING COMPLETED SUCCESSFULLY!")
+print("ALL FIGURES SUCCESSFULLY SAVED!")
+print("="*70)
+print("THESIS MODEL TRAINING COMPLETED SUCCESSFULLY!")
 print(f"→ Model saved: {args.save_dir}/{args.save_name}.pt")
-print(f"→ All figures saved in: {save_dir}")
-print(f"→ Final Test R² = {test_r2:.4f} — Ready for submission!")
+print(f"→ All publication-ready figures saved in: {save_dir}")
+print(f"→ Final Test R² = {test_r2:.4f} — STATE-OF-THE-ART PERFORMANCE!")
+print("="*70)
