@@ -167,7 +167,7 @@ print("="*60)
 # Predictions & Visualization
 # ========================================
 outputs = GetPrediction(Data, Data.test, model, criterion, l1_criterion, args.batch_size, args.model)
-X_true, Y_pred, Y_true, BetaList, SigmaList, GammaList, PiList, EList = outputs
+X_true, Y_pred, Y_true, beta_avg, sigma_avg, gamma_avg, Pi_matrix, E_trajectories = outputs
 
 save_dir = f"./Figures/{args.save_name}_results/"
 os.makedirs(save_dir, exist_ok=True)
@@ -181,8 +181,14 @@ PlotTrends(X_true.transpose(2, 0, 1),
            Y_pred.transpose(2, 0, 1), 
            save_dir, args.horizon)
 PlotPredictionTrends(Y_true.T, Y_pred.T, save_dir)
-PlotLatentE(EList, save_dir)
-PlotParameters(BetaList.T, SigmaList.T, GammaList.T, save_dir)
+# Parameters (from last batch — representative)
+PlotParameters(beta_avg[None, :].T, sigma_avg[None, :].T, gamma_avg[None, :].T, save_dir)
+
+# Latent Exposed (full batch trajectories)
+PlotLatentE(E_trajectories, save_dir)
+
+# Learned mobility matrix
+PlotEachMatrix(Pi_matrix[None, ...], "Learned Inter-Region Mobility Matrix", "Mobility", save_dir)
 
 # Learned mobility matrix (average over test set)
 with torch.no_grad():
