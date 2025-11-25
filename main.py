@@ -171,9 +171,8 @@ PlotParameters(BetaList.T, SigmaList.T, GammaList.T, save_dir)
 # Learned mobility
 with torch.no_grad():
     dummy = torch.zeros(1, args.window, Data.m, device=device)
-    _, _, _, Pi = _original_forward(dummy)
+    _, _, _, _, _, Pi, _, _ = model(dummy)
     mobility = torch.softmax(Pi, dim=1).cpu().numpy()
-PlotEachMatrix(mobility[None, ...], "Learned Mobility Matrix", "Mobility", save_dir)
 
 # Training curve
 plt.figure(figsize=(10, 6))
