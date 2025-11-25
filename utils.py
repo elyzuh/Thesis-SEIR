@@ -124,3 +124,10 @@ class Data_utility(object):
 
     def _relative_absolute_error(self, true, pred):
         return np.mean(np.abs(true - pred), axis=(0,1)) / (np.mean(np.abs(true), axis=(0,1)) + 1e-8)
+    
+# ============ CRITICAL FIX: Convert (inputs, targets) → list of tuples ============
+# Original code returns two big arrays → breaks the for-loop in main.py
+        self.train = [(torch.FloatTensor(x), torch.FloatTensor(y)) for x, y in zip(*self.train)]
+        self.valid = [(torch.FloatTensor(x), torch.FloatTensor(y)) for x, y in zip(*self.valid)]
+        self.test  = [(torch.FloatTensor(x), torch.FloatTensor(y)) for x, y in zip(*self.test)]
+        print(f"Dataset ready → Train:{len(self.train)} | Valid:{len(self.valid)} | Test:{len(self.test)} samples")
