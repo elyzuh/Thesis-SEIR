@@ -72,36 +72,43 @@ def train(loader, data, model, criterion, optim, batch_size, modelName,
     
     return total_loss / n_samples
 
+# utils_ModelTrainEval.py → ONLY REPLACE THIS FUNCTION
 def pinn_seir_loss(final_pred, dl_pred, Y_true, E_sim, I_sim,
                    beta, sigma, gamma, Pi, loader,
                    Lambda, lambda_pde, lambda_ngm):
     device = Y_true.device
-    scale = loader.scale.expand(Y_true.size(0), loader.m).to(device)
-    
-    # 1. Main data loss
+    B, H, N = Y_true.shape  # (32, 4, 9)
+
+    # CORRECT SCALE BROADCASTING — THIS IS THE ONLY FIX NEEDED
+    scale = loader.scale.to(device)                    # (9,)
+    scale = scale.view(1, 1, N).expand(B, H, N)        # → (32, 4, 9)
+
+    # 1. Data loss
     loss_data = nn.MSELoss()(final_pred * scale, Y_true * scale)
-    
-    # 2. Epi consistency
-    loss_epi = nn.MSELoss()(dl_pred * scale, Y_true * scale)
-    
-    # 3. PDE residual loss (hard PINN constraint)
+    loss_epi  = nn.MSELoss()(dl_pred    * scale, Y_true * scale)
+
+    # 2. PDE residual loss (hard PINN)
     loss_pde = 0.0
-    if lambda_pde > 0 and E_sim.shape[1] > 1:
-        B, H, N = E_sim.shape
-        Pi_b = Pi.unsqueeze(0).repeat(B, 1, 1)
+    if lambda_pde > 0 and H > 1:
+        Pi_b = Pi.unsqueeze(0).expand(B, N, N)  # (B, N, N)
         S = torch.clamp(1.0 - E_sim - I_sim, min=0.01)
-        
+
+        beta_b = beta.unsqueeze(0).unsqueeze(0).expand(B, H, N)
+        sigma_b = sigma.unsqueeze(0).unsqueeze(0).expand(B, H, N)
+        gamma_b = gamma.unsqueeze(0).unsqueeze(0).expand(B, H, N)
+
         for t in range(1, H):
-            force = torch.bmm(I_sim[:, t-1:t], Pi_b)[:, 0]  # (B, N)
-            lam = beta.unsqueeze(0) * force
-            dE = lam * S[:, t-1] - sigma.unsqueeze(0) * E_sim[:, t-1]
-            dI = sigma.unsqueeze(0) * E_sim[:, t-1] - gamma.unsqueeze(0) * I_sim[:, t-1]
-            
+            force = torch.bmm(I_sim[:, t-1:t], Pi_b)[:, 0]           # (B, N)
+            lam   = beta_b[:, t-1] * force
+
+            dE = lam * S[:, t-1] - sigma_b[:, t-1] * E_sim[:, t-1]
+            dI = sigma_b[:, t-1] * E_sim[:, t-1] - gamma_b[:, t-1] * I_sim[:, t-1]
+
             loss_pde += nn.MSELoss()(E_sim[:, t] - E_sim[:, t-1], dE)
             loss_pde += nn.MSELoss()(I_sim[:, t] - I_sim[:, t-1], dI)
         loss_pde = loss_pde / (H - 1)
-    
-    # 4. NGM / R0 regularization
+
+    # 3. NGM / R0 regularization
     loss_ngm = 0.0
     if lambda_ngm > 0:
         try:
@@ -111,12 +118,11 @@ def pinn_seir_loss(final_pred, dl_pred, Y_true, E_sim, I_sim,
                 torch.cat([torch.diag(sigma), zeros], dim=1),
                 torch.cat([-torch.diag(sigma), torch.diag(gamma)], dim=1)
             ], dim=0)
-            eigvals = torch.linalg.eigvals(F @ torch.inverse(V))
-            R0 = torch.abs(eigvals).max()
-            loss_ngm = torch.clamp(R0 - 1.5, min=0)**2 + torch.clamp(0.8 - R0, min=0)**2
+            R0 = torch.abs(torch.linalg.eigvals(F @ torch.inverse(V))).max()
+            loss_ngm = (torch.clamp(R0 - 2.0, min=0) + torch.clamp(0.8 - R0, min=0))**2
         except:
             pass
-    
+
     return loss_data + Lambda * loss_epi + lambda_pde * loss_pde + lambda_ngm * loss_ngm
 
 def GetPrediction(loader, data, model, evaluateL2, evaluateL1, batch_size, modelName):
