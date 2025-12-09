@@ -51,11 +51,9 @@ class Data_utility(object):
         self.cleaning_report.add("Data Loading", 
                                 f"Loaded {raw_df.shape[0]} rows × {raw_df.shape[1]} columns from {self.data_path}")
         
-        # Store date column if exists
-        self.dates = raw_df.iloc[:, 0].values if raw_df.shape[1] > 1 else None
-        
-        # Extract numerical data (skip first column which is typically date)
-        data = raw_df.iloc[:, 1:].values.astype(np.float32)
+       
+        self.dates = None
+        data = raw_df.values.astype(np.float32)
         
         print("\n" + "="*60)
         print("STEP 2: Identifying and Handling Errors")
