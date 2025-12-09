@@ -58,9 +58,9 @@ def PlotPredictionTrends(Y_true, Y_pred, save_dir):
     n_regions, n_samples, horizon = Y_true.shape
     weeks = np.arange(1, horizon + 1)
 
-    plt.figure(figsize=(15, 10))
+    plt.figure(figsize=(15, 12))
     for r in range(n_regions):
-        plt.subplot(3, 3, r+1)
+        plt.subplot(4, 3, r+1)
         true_mean = Y_true[r].mean(axis=0)
         pred_mean = Y_pred[r].mean(axis=0)
         
